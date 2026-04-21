@@ -73,7 +73,7 @@ const file_kv_secondary_index_proto_rawDesc = "" +
 	"\x18kv/secondary_index.proto\x12\x16io.treeverse.lakefs.kv\"1\n" +
 	"\x0eSecondaryIndex\x12\x1f\n" +
 	"\vprimary_key\x18\x01 \x01(\fR\n" +
-	"primaryKeyB Z\x1egithub.com/dubin555/azlake/kvb\x06proto3"
+	"primaryKeyB Z\x1egithub.com/treeverse/lakefs/kvb\x06proto3"
 
 var (
 	file_kv_secondary_index_proto_rawDescOnce sync.Once
