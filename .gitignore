@@ -1,0 +1,7 @@
+azlake
+azlakectl
+*.exe
+/tmp/
+/webui/node_modules/
+/webui/dist/
+.DS_Store
