@@ -1,0 +1,44 @@
+package auth
+
+import (
+	"context"
+	"crypto/subtle"
+
+	"github.com/dubin555/azlake/pkg/auth/model"
+)
+
+// Authenticator authenticates users returning an identifier for the user.
+type Authenticator interface {
+	AuthenticateUser(ctx context.Context, username, password string) (string, error)
+}
+
+// Credentialler fetches S3-style credentials for access keys.
+type Credentialler interface {
+	GetCredentials(ctx context.Context, accessKeyID string) (*model.Credential, error)
+}
+
+// BuiltinAuthenticator authenticates users by their access key IDs and
+// secret access keys stored in the auth service.
+type BuiltinAuthenticator struct {
+	creds Credentialler
+}
+
+func NewBuiltinAuthenticator(service Service) *BuiltinAuthenticator {
+	return &BuiltinAuthenticator{creds: service}
+}
+
+func (ba *BuiltinAuthenticator) AuthenticateUser(ctx context.Context, username, password string) (string, error) {
+	// username is actually the access key ID
+	cred, err := ba.creds.GetCredentials(ctx, username)
+	if err != nil {
+		return InvalidUserID, err
+	}
+	if subtle.ConstantTimeCompare([]byte(password), []byte(cred.SecretAccessKey)) != 1 {
+		return InvalidUserID, ErrInvalidSecretAccessKey
+	}
+	return cred.Username, nil
+}
+
+func (ba *BuiltinAuthenticator) String() string {
+	return "built in authenticator"
+}
