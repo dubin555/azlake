@@ -765,7 +765,7 @@ const file_auth_model_model_proto_rawDesc = "" +
 	"\n" +
 	"permission\x18\x01 \x01(\tR\n" +
 	"permission\x12T\n" +
-	"\frepositories\x18\x02 \x01(\v20.io.treeverse.lakefs.auth.model.RepositoriesDataR\frepositoriesB(Z&github.com/dubin555/azlake/auth/modelb\x06proto3"
+	"\frepositories\x18\x02 \x01(\v20.io.treeverse.lakefs.auth.model.RepositoriesDataR\frepositoriesB(Z&github.com/treeverse/lakefs/auth/modelb\x06proto3"
 
 var (
 	file_auth_model_model_proto_rawDescOnce sync.Once

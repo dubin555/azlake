@@ -95,7 +95,7 @@ const file_graveler_retention_commits_proto_rawDesc = "" +
 	"\n" +
 	"MainParent\x18\x02 \x01(\tR\n" +
 	"MainParent\x12 \n" +
-	"\vMetaRangeID\x18\x03 \x01(\tR\vMetaRangeIDB4Z2github.com/dubin555/azlake/pkg/graveler/retentionb\x06proto3"
+	"\vMetaRangeID\x18\x03 \x01(\tR\vMetaRangeIDB4Z2github.com/treeverse/lakefs/pkg/graveler/retentionb\x06proto3"
 
 var (
 	file_graveler_retention_commits_proto_rawDescOnce sync.Once

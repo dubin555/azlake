@@ -93,7 +93,7 @@ const file_distributed_mc_owner_proto_rawDesc = "" +
 	"\x16MostlyCorrectOwnership\x12\x14\n" +
 	"\x05owner\x18\x01 \x01(\tR\x05owner\x124\n" +
 	"\aexpires\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\aexpires\x12\x18\n" +
-	"\acomment\x18\x03 \x01(\tR\acommentB)Z'github.com/dubin555/azlake/distributedb\x06proto3"
+	"\acomment\x18\x03 \x01(\tR\acommentB)Z'github.com/treeverse/lakefs/distributedb\x06proto3"
 
 var (
 	file_distributed_mc_owner_proto_rawDescOnce sync.Once

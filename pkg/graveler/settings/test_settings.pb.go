@@ -95,7 +95,7 @@ const file_graveler_settings_test_settings_proto_rawDesc = "" +
 	"exampleMap\x1a=\n" +
 	"\x0fExampleMapEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01B/Z-github.com/dubin555/azlake/graveler/settingsb\x06proto3"
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01B/Z-github.com/treeverse/lakefs/graveler/settingsb\x06proto3"
 
 var (
 	file_graveler_settings_test_settings_proto_rawDescOnce sync.Once
