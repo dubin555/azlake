@@ -3,6 +3,8 @@ package stats
 import (
 	"context"
 	"time"
+
+	"github.com/dubin555/azlake/pkg/logging"
 )
 
 type Collector interface {
@@ -64,5 +66,14 @@ func NewBufferedCollectorFromConfig(ctx context.Context, cfg interface{}) Collec
 
 type UsageReporterOperations interface {
 	// Stub - will be filled in later
+}
+
+// LoggerAdapter adapts a logging.Logger to the retryablehttp.LeveledLogger interface.
+type LoggerAdapter struct {
+	Logger logging.Logger
+}
+
+func (l *LoggerAdapter) Printf(msg string, args ...any) {
+	l.Logger.Tracef(msg, args...)
 }
 

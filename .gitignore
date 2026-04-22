@@ -1,5 +1,5 @@
-azlake
-azlakectl
+/azlake
+/azlakectl
 *.exe
 /tmp/
 /webui/node_modules/
