@@ -6,6 +6,8 @@ azlake brings Git-like version control to your data stored on Azure. Create repo
 
 Extracted and adapted from [lakeFS](https://github.com/treeverse/lakeFS), rebuilt for Azure-first workflows.
 
+![azlake Web UI — browsing a file stored in Azure CosmosDB + Blob Storage](docs/azlake_data.png)
+
 ## Features
 
 - **Git-like operations** — repositories, branches, commits, diffs, merges

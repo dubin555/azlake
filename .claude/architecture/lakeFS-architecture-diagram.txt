@@ -1,0 +1,244 @@
+╔════════════════════════════════════════════════════════════════════════════════════════════╗
+║                         lakeFS REPOSITORY CRUD ARCHITECTURE                              ║
+╚════════════════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   HTTP REQUEST LAYER                                       │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                             │
+│  POST /repositories  ──→  Router (apigen) ──→ Controller.CreateRepository()                │
+│                                                      │                                      │
+│                                                      ├─→ authorize(user, permissions)      │
+│                                                      ├─→ Catalog.GetRepository() [exists?] │
+│                                                      └─→ Catalog.CreateRepository()        │
+│                                                                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              BUSINESS LOGIC LAYER (Catalog)                                 │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                             │
+│  Catalog.CreateRepository(repoName, storageID, storageNS, branch, readOnly)                │
+│    │                                                                                        │
+│    ├─→ Validate: repositoryID, storageNamespace                                           │
+│    │                                                                                        │
+│    └─→ Store.CreateRepository()  [Interface: graveler.VersionController]                  │
+│                                                                                             │
+│  Catalog.ListRepositories(limit, prefix, search, after, opts...)                          │
+│    │                                                                                        │
+│    ├─→ Apply RBAC filter: WithListReposPermissionFilter(user, policies)                   │
+│    │                                                                                        │
+│    └─→ Store.ListRepositories()  [Iterator pattern]                                       │
+│                                                                                             │
+│  ┌───────────────────────────────────────────────────────────────┐                        │
+│  │  Catalog.Store Interface (Embedded Graveler):                 │                        │
+│  │  ├─ graveler.KeyValueStore (entries r/w)                      │                        │
+│  │  ├─ graveler.VersionController (repo CRUD)                    │                        │
+│  │  ├─ graveler.Dumper                                           │                        │
+│  │  ├─ graveler.Loader                                           │                        │
+│  │  ├─ graveler.Plumbing                                         │                        │
+│  │  └─ graveler.Collaborator                                     │                        │
+│  └───────────────────────────────────────────────────────────────┘                        │
+│                                                                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                         PERSISTENCE LAYER (Graveler/Store)                                  │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                             │
+│  VersionController.CreateRepository()                                                       │
+│    │                                                                                        │
+│    ├─→ RefManager.SetRepository(repositoryID, storageID, storageNS, branchID)             │
+│    │        │                                                                              │
+│    │        └─→ kvStore.Set(partitionKey, "repo:{repoName}", {RepositoryRecord})         │
+│    │        └─→ kvStore.Set(partitionKey, "repo:{repoName}:branch:{branchID}", {...})   │
+│    │                                                                                        │
+│    ├─→ StagingManager initialization  (KV-based staging area)                             │
+│    │                                                                                        │
+│    └─→ Return RepositoryRecord                                                             │
+│                                                                                             │
+│  VersionController.ListRepositories()                                                       │
+│    │                                                                                        │
+│    ├─→ RefManager.ListRepositories()                                                      │
+│    │        │                                                                              │
+│    │        └─→ kvStore.Scan(partitionKey="kv:ref", options) → Iterator                 │
+│    │                                                                                        │
+│    └─→ Return RepositoryIterator                                                           │
+│                                                                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                             KV STORE LAYER (Interface)                                      │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                             │
+│  kv.Store Interface:                                                                        │
+│    ├─ Get(ctx, partitionKey, key) → *ValueWithPredicate                                   │
+│    ├─ Set(ctx, partitionKey, key, value) → error                                          │
+│    ├─ SetIf(ctx, partitionKey, key, value, predicate) → error  [CAS]                      │
+│    ├─ Delete(ctx, partitionKey, key) → error                                              │
+│    ├─ Scan(ctx, partitionKey, options) → EntriesIterator                                  │
+│    └─ Close()                                                                               │
+│                                                                                             │
+│  ┌─────────────────────────────────────────────────────────────┐                         │
+│  │  Registered Drivers:                                        │                         │
+│  │  ├─ postgres (Production: Primary backend)                  │                         │
+│  │  ├─ dynamodb (AWS DynamoDB)                                 │                         │
+│  │  ├─ cosmosdb (Azure Cosmos DB)                              │                         │
+│  │  ├─ local (File-based, testing)                             │                         │
+│  │  └─ mem (In-memory, testing)                                │                         │
+│  └─────────────────────────────────────────────────────────────┘                         │
+│                                                                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              DATABASE DRIVER LAYER                                          │
+├─────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                             │
+│  PostgreSQL Driver (pkg/kv/postgres/)                                                       │
+│    │                                                                                        │
+│    └─→ SQL: INSERT INTO kv_metadata_table (partition_key, key, value)                     │
+│         SELECT INTO kv_metadata_table (partition_key, key, value)                         │
+│         UPDATE kv_metadata_table WHERE partition_key = ? AND key = ?                       │
+│                                                                                             │
+│  DynamoDB Driver (pkg/kv/dynamodb/)                                                         │
+│    │                                                                                        │
+│    └─→ DynamoDB PutItem/GetItem/Scan operations                                           │
+│                                                                                             │
+│  Cosmos DB Driver (pkg/kv/cosmosdb/)                                                        │
+│    │                                                                                        │
+│    └─→ Cosmos DB Document operations                                                       │
+│                                                                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════════════════════════
+
+                            DEPENDENCY INJECTION CHAIN (Server Startup)
+                              cmd/lakefs/cmd/run.go :: Run()
+
+    1. Load Config
+         ↓
+    2. Create KVStore
+         kvStore = kv.Open(ctx, kvParams)
+         ↓
+    3. Create Auth Services
+         authService = auth.NewAuthService(ctx, cfg, logger, kvStore, ...)
+         ↓
+    4. Create Block Adapter
+         blockAdapter = blockfactory.BuildBlockAdapterWithMetrics(ctx, ...)
+         ↓
+    5. Create Catalog (with KVStore)
+         catalogConfig.KVStore = kvStore
+         catalog = catalog.New(ctx, catalogConfig)
+            ↓
+           [Inside catalog.New()]:
+            - Create RefManager (uses KVStore)
+            - Create StagingManager (uses KVStore)
+            - Create Graveler with managers
+            - Assign to Catalog.Store
+         ↓
+    6. Create Controller (with Catalog)
+         controller = api.NewController(cfg, catalog, authService, ...)
+         ↓
+    7. Start HTTP Server
+         server.ListenAndServe(handler)
+
+
+═════════════════════════════════════════════════════════════════════════════════════════════════
+
+                         DATA FLOW: CreateRepository Request
+
+┌──────────────────────────┐
+│ HTTP Request             │  POST /repositories
+│ {name, storageNamespace} │
+└─────────────┬────────────┘
+              │
+              ↓
+┌──────────────────────────────────────────────────┐
+│ Controller.CreateRepository()                    │
+│  • Check authorization                          │
+│  • Validate storage namespace                   │
+│  • Call: Catalog.CreateRepository()            │
+└─────────────┬──────────────────────────────────┘
+              │
+              ↓
+┌──────────────────────────────────────────────────┐
+│ Catalog.CreateRepository()                       │
+│  • Validate repo ID                             │
+│  • Call: Store.CreateRepository()              │
+└─────────────┬──────────────────────────────────┘
+              │
+              ↓
+┌──────────────────────────────────────────────────┐
+│ Graveler (VersionController)                     │
+│  • Create repository record                     │
+│  • Create default branch                        │
+│  • Call: RefManager.SetRepository()            │
+└─────────────┬──────────────────────────────────┘
+              │
+              ↓
+┌──────────────────────────────────────────────────┐
+│ RefManager                                       │
+│  • Call: kvStore.Set()                         │
+│    ├─ key="repo:{repoName}"                    │
+│    ├─ key="repo:{repoName}:branch:{branch}"   │
+│    └─ ...metadata entries...                   │
+└─────────────┬──────────────────────────────────┘
+              │
+              ↓
+┌──────────────────────────────────────────────────┐
+│ KV Store (Driver)                                │
+│  • Execute Get/Set/SetIf operations            │
+│  • Call driver-specific (SQL, DynamoDB, etc.)  │
+└─────────────┬──────────────────────────────────┘
+              │
+              ↓
+┌──────────────────────────────────────────────────┐
+│ Database                                         │
+│  INSERT/UPDATE metadata                         │
+└─────────────┬──────────────────────────────────┘
+              │
+              ↓
+┌──────────────────────────────────────────────────┐
+│ Return chain (unwind)                            │
+│  RepositoryRecord ← Graveler                   │
+│  Repository ← Catalog                          │
+│  HTTP 201 + JSON ← Controller                  │
+└──────────────────────────────────────────────────┘
+
+═════════════════════════════════════════════════════════════════════════════════════════════════
+
+                            KEY DESIGN PATTERNS
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│  1. Explicit DI (No Global State)                                                           │
+│     ✓ All dependencies injected via constructors                                            │
+│     ✓ Easy to test with mocks                                                               │
+│     ✓ Clear dependency graph                                                                │
+│                                                                                             │
+│  2. Interface-Based Composition                                                             │
+│     ✓ Store interface allows multiple implementations (Graveler, Mock, etc.)               │
+│     ✓ Decoupled layers                                                                      │
+│     ✓ Each layer can be tested independently                                               │
+│                                                                                             │
+│  3. Functional Options Pattern                                                              │
+│     ✓ ListRepositories(ctx, limit, prefix, search, after, opts...)                        │
+│     ✓ Extensible without API signature changes                                             │
+│     ✓ Example: WithListReposPermissionFilter(user, policies)                               │
+│                                                                                             │
+│  4. Partition-Based KV Storage                                                              │
+│     ✓ Partition key: "kv:ref", "kv:staging", etc.                                         │
+│     ✓ Enables sharding across partitions                                                    │
+│     ✓ Supports CAS (Compare-And-Swap) via SetIf                                            │
+│                                                                                             │
+│  5. Rate Limiting Wrapper                                                                   │
+│     ✓ KVStoreLimited wraps raw KVStore                                                      │
+│     ✓ Prevents background operations from overwhelming system                              │
+│     ✓ Critical operations use direct KVStore access                                        │
+│                                                                                             │
+│  6. Error Conversion Function                                                               │
+│     ✓ ErrorToStatusCodeAndMsg injected into Catalog                                        │
+│     ✓ Centralized error → HTTP status mapping                                              │
+│     ✓ Decoupled error handling from persistence logic                                      │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
