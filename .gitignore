@@ -5,3 +5,7 @@
 /webui/node_modules/
 /webui/dist/
 .DS_Store
+.env
+.env.*
+.claude/
+ANALYSIS_COMPLETE.txt

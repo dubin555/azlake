@@ -4,6 +4,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -13,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/dubin555/azlake/pkg/api/apigen"
 	"github.com/dubin555/azlake/pkg/api/apiutil"
+	"github.com/dubin555/azlake/pkg/azcat"
 	"github.com/dubin555/azlake/pkg/httputil"
 	"github.com/dubin555/azlake/pkg/logging"
 )
@@ -24,12 +28,16 @@ const (
 
 func Serve(
 	logger logging.Logger,
+	catalog *azcat.Catalog,
 ) *chi.Mux {
 	logger.Info("initialize OpenAPI server")
 	swagger, err := apigen.GetSwagger()
 	if err != nil {
 		panic(err)
 	}
+
+	// Patch OpenAPI schema: add "az" to allowed storage_namespace patterns
+	patchSwaggerForAzure(swagger)
 
 	r := chi.NewRouter()
 	apiRouter := r.With(
@@ -39,19 +47,25 @@ func Serve(
 		httputil.LoggingMiddleware(
 			httputil.RequestIDHeaderName,
 			logging.Fields{logging.ServiceNameFieldKey: LoggerServiceName},
-			"",
+			"info",
 			false,
 			false,
 		),
 	)
-	controller := NewController()
+	controller := NewController(catalog)
 	apigen.HandlerFromMuxWithBaseURL(controller, apiRouter, apiutil.BaseURL)
+
+	// Custom endpoint: SAS URL for DuckDB direct Azure Blob access (not in OpenAPI spec)
+	r.Get(apiutil.BaseURL+"/repositories/{repository}/refs/{ref}/objects/sas", controller.GetObjectSASURL)
 
 	r.Mount("/_health", httputil.ServeHealth())
 	r.Mount("/metrics", promhttp.Handler())
 	r.Mount("/_pprof/", httputil.ServePPROF("/_pprof/"))
 	r.Mount("/openapi.json", http.HandlerFunc(swaggerSpecHandler))
 	r.Mount(apiutil.BaseURL, http.HandlerFunc(InvalidAPIEndpointHandler))
+
+	// Serve WebUI static files (SPA fallback)
+	UIHandler(r, logger)
 
 	return r
 }
@@ -117,4 +131,56 @@ func validateRequest(r *http.Request, route *routers.Route, pathParams map[strin
 
 func InvalidAPIEndpointHandler(w http.ResponseWriter, r *http.Request) {
 	writeError(w, r, http.StatusNotFound, ErrInvalidAPIEndpoint)
+}
+
+// UIHandler serves the WebUI static files with SPA fallback.
+// It looks for webui/dist relative to the working directory.
+func UIHandler(r *chi.Mux, logger logging.Logger) {
+	distPath := "webui/dist"
+	if _, err := os.Stat(distPath); os.IsNotExist(err) {
+		// Try relative to executable
+		execPath, _ := os.Executable()
+		distPath = filepath.Join(filepath.Dir(execPath), "webui", "dist")
+	}
+	if _, err := os.Stat(distPath); os.IsNotExist(err) {
+		logger.Warn("WebUI dist directory not found, skipping UI serving")
+		return
+	}
+
+	logger.WithField("path", distPath).Info("Serving WebUI from dist directory")
+	fileServer := http.FileServer(http.Dir(distPath))
+
+	r.HandleFunc("/*", func(w http.ResponseWriter, req *http.Request) {
+		// If the requested file exists, serve it directly
+		path := req.URL.Path
+		if path == "/" {
+			path = "/index.html"
+		}
+		fullPath := filepath.Join(distPath, filepath.Clean(path))
+		if !strings.HasPrefix(fullPath, distPath) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if _, err := os.Stat(fullPath); err == nil {
+			fileServer.ServeHTTP(w, req)
+			return
+		}
+		// SPA fallback: serve index.html for all non-file routes
+		http.ServeFile(w, req, filepath.Join(distPath, "index.html"))
+	})
+}
+
+// patchSwaggerForAzure modifies the loaded OpenAPI spec to accept "az://" storage namespaces
+func patchSwaggerForAzure(swagger *openapi3.T) {
+	oldPattern := `^(s3|gs|https?|mem|local|transient)://.*$`
+	newPattern := `^(az|s3|gs|https?|mem|local|transient)://.*$`
+	for _, schema := range swagger.Components.Schemas {
+		if schema.Value != nil && schema.Value.Properties != nil {
+			for name, prop := range schema.Value.Properties {
+				if name == "storage_namespace" && prop.Value != nil && prop.Value.Pattern == oldPattern {
+					prop.Value.Pattern = newPattern
+				}
+			}
+		}
+	}
 }
