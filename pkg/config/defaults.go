@@ -15,7 +15,7 @@ const (
 
 	BlockstoreTypeKey                        = "blockstore.type"
 	DefaultQuickstartUsername                 = "quickstart"
-	DefaultQuickstartKeyID                   = "AZLAKE_QUICKSTART_KEY_ID"                     //nolint:gosec
+	DefaultQuickstartKeyID                   = "AZLAKE_QUICKSTART_KEY_ID"     //nolint:gosec
 	DefaultQuickstartSecretKey               = "AZLAKE_QUICKSTART_SECRET_KEY" //nolint:gosec
 	DefaultAuthAPIHealthCheckTimeout         = 20 * time.Second
 	DefaultAuthSecret                        = "THIS_MUST_BE_CHANGED_IN_PRODUCTION"   // #nosec
